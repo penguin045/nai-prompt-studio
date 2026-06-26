@@ -172,8 +172,14 @@ function* balancedObjects(text) {
 
 // ============ stealth LSB(αチャンネル)============
 class LSBReader {
-  constructor(imageData) { this.d = imageData.data; this.n = imageData.width * imageData.height; this.idx = 0; }
-  bit() { if (this.idx >= this.n) return null; const a = this.d[this.idx * 4 + 3]; this.idx++; return a & 1; }
+  // NAI stealth は「列優先(縦スキャン)」: 各列を上から下へ、αのLSBを1ビットずつ。
+  constructor(imageData) { this.d = imageData.data; this.w = imageData.width; this.h = imageData.height; this.col = 0; this.row = 0; }
+  bit() {
+    if (this.col >= this.w) return null;
+    const a = this.d[(this.row * this.w + this.col) * 4 + 3];
+    this.row++; if (this.row >= this.h) { this.row = 0; this.col++; }
+    return a & 1;
+  }
   byte() { let b = 0; for (let i = 0; i < 8; i++) { const x = this.bit(); if (x === null) return null; b = (b << 1) | x; } return b; }
   bytes(n) { const o = new Uint8Array(n); for (let i = 0; i < n; i++) { const b = this.byte(); if (b === null) return null; o[i] = b; } return o; }
   uint32() { const b = this.bytes(4); return b ? ((b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0) : null; }
@@ -192,7 +198,8 @@ async function readStealth(imageData) {
   return JSON.parse(jsonStr);
 }
 async function fileToImageData(file) {
-  const bmp = await createImageBitmap(file);
+  // αのLSBを保つため premultiply / 色変換を無効化
+  const bmp = await createImageBitmap(file, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   const canvas = (typeof OffscreenCanvas !== 'undefined')
     ? new OffscreenCanvas(bmp.width, bmp.height)
     : Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
@@ -213,16 +220,34 @@ function mapModel(source) {
   if (s.includes('v3') || s.includes('diffusion 3') || s.includes('anime')) return 'v3';
   return null;
 }
+// キャプション整形: 改行・トップレベルの | を区切り(,)へ、連続/空の区切りを除去。
+// :: 重みブロックと () [] {} の内側は触らない。
+export function cleanCaption(s) {
+  if (!s) return '';
+  s = String(s).replace(/\r?\n/g, ', ');
+  let out = '', depth = 0, num = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === ':' && s[i + 1] === ':') { num = !num; out += '::'; i++; continue; }
+    if (!num) {
+      if (c === '(' || c === '[' || c === '{') depth++;
+      else if (c === ')' || c === ']' || c === '}') depth = Math.max(0, depth - 1);
+    }
+    out += (c === '|' && depth === 0 && !num) ? ',' : c;
+  }
+  return out.replace(/\s*,(?:\s*,)+/g, ', ').replace(/^\s*,+|,+\s*$/g, '').trim();
+}
+
 export function normalizeParams(params, source) {
   const v4 = params.v4_prompt?.caption, v4n = params.v4_negative_prompt?.caption;
   const useCoords = !!(params.v4_prompt?.use_coords);
-  const basePos = (v4?.base_caption ?? params.prompt ?? '').trim();
-  const baseNeg = (v4n?.base_caption ?? params.uc ?? params.negative_prompt ?? '').trim();
+  const basePos = cleanCaption(v4?.base_caption ?? params.prompt ?? '');
+  const baseNeg = cleanCaption(v4n?.base_caption ?? params.uc ?? params.negative_prompt ?? '');
   const cc = v4?.char_captions || [], ccn = v4n?.char_captions || [];
   const characters = cc.map((c, i) => {
     const center = c.centers?.[0] || null;
     return {
-      name: '', positive: (c.char_caption || '').trim(), negative: (ccn[i]?.char_caption || '').trim(),
+      name: '', positive: cleanCaption(c.char_caption || ''), negative: cleanCaption(ccn[i]?.char_caption || ''),
       position: useCoords ? centerToGrid(center) : null, aiChoice: !(useCoords && center),
     };
   });
