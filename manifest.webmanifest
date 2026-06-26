@@ -1,0 +1,17 @@
+{
+  "name": "NAI Prompt Studio",
+  "short_name": "NAI Studio",
+  "description": "NovelAI 向けプロンプト作成スタジオ。タグ管理・重み調整・重複排除・ファイル永続化。",
+  "lang": "ja",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0b11",
+  "theme_color": "#0a0b11",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

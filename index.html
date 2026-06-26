@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0b11">
+<meta name="description" content="NovelAI V4.5 向けプロンプト作成スタジオ。マルチキャラ・重み調整・重複排除・ファイル永続化。">
+<!-- PWA(スマホ・スタンドアロン) -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NAI Studio">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/styles.css">
+<title>NAI Prompt Studio</title>
+</head>
+<body>
+<div id="app">
+  <header class="appbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">✦</span>
+      <h1>NAI Prompt Studio</h1>
+      <span class="ver-badge">V4.5</span>
+    </div>
+    <div class="appbar-actions">
+      <span id="saveStatus" class="save-status" title="保存状態">—</span>
+      <button id="btnLoadImage" class="icon-btn" title="NAI生成画像(PNG/WebP/JPEG)からプロンプトを読込">🖼</button>
+      <button id="btnData" class="icon-btn" title="データ/ファイル">💾</button>
+      <button id="btnSettings" class="icon-btn" title="設定">⚙️</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- 左: タグライブラリ -->
+    <section class="panel panel-library" data-panel="library" aria-label="タグライブラリ">
+      <div class="panel-head"><h2>タグライブラリ</h2>
+        <div class="active-box-hint">追加先: <strong id="activeBoxLabel">ベース / ポジティブ</strong></div>
+      </div>
+      <div class="lib-search">
+        <input id="tagSearch" type="search" placeholder="タグ検索(日本語/英語)" autocomplete="off">
+        <button id="btnAddCustom" class="ghost-btn" title="入力したタグを追加">＋追加</button>
+      </div>
+      <div id="categoryList" class="category-list"></div>
+    </section>
+
+    <!-- 中央: プロンプト編集 -->
+    <section class="panel panel-editor" data-panel="editor" aria-label="プロンプト編集">
+      <div class="panel-head">
+        <h2>プロンプト編集</h2>
+        <div class="model-row">
+          <label for="modelSelect">モデル</label>
+          <select id="modelSelect"></select>
+        </div>
+        <div class="quality-row">
+          <label for="qualityPreset">品質プリセット</label>
+          <select id="qualityPreset"><option value="">— なし —</option></select>
+          <button id="btnApplyQuality" class="ghost-btn">適用</button>
+        </div>
+      </div>
+      <div class="editor-scroll">
+        <div id="editorBoxes"></div>
+        <button id="btnAddChar" class="add-char-btn">＋ キャラクター追加</button>
+        <p class="hint" id="multicharHint">人数タグ(1girl, 2girls…)はベースへ。各キャラは番号なし(girl/boy)で記述します。</p>
+      </div>
+    </section>
+
+    <!-- 右: 出力 -->
+    <section class="panel panel-output" data-panel="output" aria-label="出力">
+      <div class="panel-head"><h2>出力</h2><div id="outStats" class="out-stats"></div></div>
+      <div class="output-scroll">
+        <div id="warnArea"></div>
+
+        <div class="out-group">
+          <div class="out-label"><span>パイプ形式(1欄貼り付け用)</span>
+            <button class="copy-btn" data-copy-el="outPipe">コピー</button></div>
+          <textarea id="outPipe" class="out-text" readonly rows="3"></textarea>
+        </div>
+
+        <div id="boxOutputs"></div>
+
+        <div class="out-group presets">
+          <div class="out-label"><span>プリセット</span>
+            <button id="btnSavePreset" class="ghost-btn">現在の内容を保存</button></div>
+          <div id="presetList" class="preset-list"></div>
+        </div>
+
+        <div class="out-group history">
+          <div class="out-label"><span>履歴</span>
+            <button id="btnClearHistory" class="ghost-btn subtle">クリア</button></div>
+          <div id="historyList" class="history-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="表示切替">
+    <button class="nav-btn" data-nav="library">📚<span>ライブラリ</span></button>
+    <button class="nav-btn active" data-nav="editor">✎<span>編集</span></button>
+    <button class="nav-btn" data-nav="output">⬆<span>出力</span></button>
+  </nav>
+</div>
+
+<!-- データ/ファイル -->
+<dialog id="dataDialog" class="dialog">
+  <form method="dialog">
+    <h2>データの永続化(ブラウザ外)</h2>
+    <p class="dialog-desc">保存先ファイルを指定すると、ブラウザを消してもデータが残ります。</p>
+    <div class="linked-file"><span>連携ファイル: </span><strong id="linkedFileName">未設定</strong></div>
+    <div class="dialog-grid" id="fsButtons">
+      <button type="button" id="btnChooseFile">保存先ファイルを作成…</button>
+      <button type="button" id="btnLinkFile">既存ファイルを開く…</button>
+      <button type="button" id="btnSaveNow">今すぐ上書き保存</button>
+      <button type="button" id="btnLoadFile">連携ファイルから読込</button>
+    </div>
+    <label class="switch-row"><input type="checkbox" id="autoSaveToggle"><span>変更時に自動でファイル保存する</span></label>
+    <hr>
+    <p class="dialog-desc">ファイルAPI非対応ブラウザ向け:</p>
+    <div class="dialog-grid">
+      <button type="button" id="btnExport">JSONをダウンロード</button>
+      <button type="button" id="btnImport">JSONを読み込み(置換)</button>
+      <button type="button" id="btnImportMerge">JSONを読み込み(マージ)</button>
+    </div>
+    <menu class="dialog-foot"><button value="close">閉じる</button></menu>
+  </form>
+</dialog>
+
+<!-- 設定 -->
+<dialog id="settingsDialog" class="dialog">
+  <form method="dialog">
+    <h2>設定</h2>
+    <label class="field"><span>重み記法</span>
+      <select id="setWeightMode">
+        <option value="numeric">数値 1.5::tag::(V4+ / 負値はV4.5)</option>
+        <option value="bracket">波括弧 {tag} / [tag](V3互換)</option>
+      </select>
+    </label>
+    <label class="switch-row"><input type="checkbox" id="setDedup" checked><span>最終出力で重複排除する(ボックス単位)</span></label>
+    <label class="field"><span>重複時に残す重み</span>
+      <select id="setKeep">
+        <option value="strongest">最も強調された方</option>
+        <option value="first">最初の出現</option>
+        <option value="last">最後の出現</option>
+      </select>
+    </label>
+    <menu class="dialog-foot"><button value="close">閉じる</button></menu>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
