@@ -1,7 +1,7 @@
 // app.js — NAI Prompt Studio コントローラ(V4.5対応 / マルチキャラ)
 import CATEGORIES, { QUALITY_PRESETS, MODELS, DEFAULT_MODEL, getModel, flattenTags, searchTags } from './tags.js';
 import { buildAll, buildPrompt, makeItem, parsePromptText, bumpWeight, findDuplicateIds, renderTag } from './prompt.js';
-import { normalizeKey } from './dedup.js';
+import { normalizeKey, splitTags } from './dedup.js';
 import * as db from './db.js';
 import * as store from './storage.js';
 import { readNaiFromFile } from './naimeta.js';
@@ -37,6 +37,7 @@ async function init() {
   wireEditorDelegation();
   wireOutput();
   wireDialogs();
+  wireFavEditor();
   wireNav();
   await refreshLinkedFileUI();
   registerSW();
@@ -177,23 +178,68 @@ async function renderFavorites() {
   if (!favs.length) { host.innerHTML = `<div class="fav-empty">タグを入れて「＋保存」でまとめ登録</div>`; return; }
   host.innerHTML = favs.map(f => `<span class="fav-chip" data-id="${f.id}" title="${esc(f.tags)}">
     <button class="fav-insert" data-fav="ins">★ ${esc(f.name)} <em>${f.count || 0}</em></button>
+    <button class="fav-mini" data-fav="edit" title="編集">✎</button>
     <button class="fav-del" data-fav="del" title="削除">✕</button></span>`).join('');
-}
-async function saveFavorite() {
-  const arr = (getArr(activeBox.box, activeBox.field) || []).filter(i => i.enabled && i.base);
-  if (!arr.length) { toast('保存するタグがありません(追加先ボックスを選択)'); return; }
-  const tags = arr.map(i => renderTag(i, state.weightMode)).join(', ');
-  const name = prompt('お気に入り名', arr.slice(0, 3).map(i => i.base).join(', '));
-  if (!name) return;
-  await db.put('favorites', { id: db.uid('f'), name, tags, count: arr.length, createdAt: new Date().toISOString() });
-  renderFavorites(); toast(`お気に入り「${name}」を保存`);
 }
 async function onFavClick(e) {
   const chip = e.target.closest('.fav-chip'); if (!chip) return;
   const id = chip.dataset.id;
-  if (e.target.closest('[data-fav="del"]')) { await db.del('favorites', id); renderFavorites(); toast('お気に入りを削除'); return; }
+  if (e.target.closest('[data-fav="del"]')) {
+    const f = await db.get('favorites', id);
+    if (confirm(`お気に入り「${f?.name || ''}」を削除しますか?`)) { await db.del('favorites', id); renderFavorites(); toast('削除しました'); }
+    return;
+  }
+  if (e.target.closest('[data-fav="edit"]')) {
+    const f = await db.get('favorites', id);
+    if (f) openFavEditor({ id: f.id, name: f.name, tagItems: splitTags(f.tags).map(t => ({ text: t, on: true })) });
+    return;
+  }
   const f = await db.get('favorites', id);
   if (f) { addTags(activeBox.box, activeBox.field, f.tags); toast(`「${f.name}」を ${activeBox.field === 'positive' ? 'ポジ' : 'ネガ'} へ挿入`); }
+}
+
+// 「＋保存」: 現在のボックスのタグを全選択状態でエディタを開く(不要分を外して保存)
+function saveFavorite() {
+  const arr = (getArr(activeBox.box, activeBox.field) || []).filter(i => i.enabled && i.base);
+  const tagItems = arr.map(i => ({ text: renderTag(i, state.weightMode), on: true }));
+  openFavEditor({ id: null, name: arr.slice(0, 3).map(i => i.base).join(', '), tagItems });
+}
+
+// ---- お気に入り編集ダイアログ ----
+let favEdit = null;
+function openFavEditor({ id = null, name = '', tagItems = [] }) {
+  favEdit = { id, tags: tagItems.slice() };
+  $('#favDialogTitle').textContent = id ? 'お気に入りを編集' : 'お気に入りを保存';
+  $('#favName').value = name;
+  $('#favAddInput').value = '';
+  renderFavPick();
+  $('#favDialog').showModal();
+}
+function renderFavPick() {
+  const host = $('#favTagPick');
+  host.innerHTML = favEdit.tags.length
+    ? favEdit.tags.map((t, i) => `<button type="button" class="pick-chip${t.on ? ' on' : ''}" data-i="${i}">${esc(t.text)}</button>`).join('')
+    : `<div class="meta">タグなし。下の欄から追加できます</div>`;
+}
+function wireFavEditor() {
+  $('#favTagPick').addEventListener('click', (e) => {
+    const b = e.target.closest('.pick-chip'); if (!b) return;
+    const t = favEdit.tags[+b.dataset.i]; t.on = !t.on; b.classList.toggle('on', t.on);
+  });
+  $('#favAddInput').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return; e.preventDefault();
+    for (const p of splitTags(e.target.value)) favEdit.tags.push({ text: p, on: true });
+    e.target.value = ''; renderFavPick();
+  });
+  $('#favCancelBtn').addEventListener('click', () => $('#favDialog').close());
+  $('#favSaveBtn').addEventListener('click', saveFavFromDialog);
+}
+async function saveFavFromDialog() {
+  const name = $('#favName').value.trim() || 'お気に入り';
+  const tags = favEdit.tags.filter(t => t.on).map(t => t.text);
+  if (!tags.length) { toast('タグを1つ以上選択してください'); return; }
+  await db.put('favorites', { id: favEdit.id || db.uid('f'), name, tags: tags.join(', '), count: tags.length, createdAt: new Date().toISOString() });
+  $('#favDialog').close(); renderFavorites(); toast(favEdit.id ? `「${name}」を更新` : `「${name}」を保存`);
 }
 
 // ===== カスタムタグ: 追加(画像/手動)・削除 =====

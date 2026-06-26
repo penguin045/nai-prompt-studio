@@ -155,6 +155,24 @@
   </form>
 </dialog>
 
+<!-- お気に入り編集 -->
+<dialog id="favDialog" class="dialog">
+  <form method="dialog">
+    <h2 id="favDialogTitle">お気に入り(タグセット)</h2>
+    <label class="field"><span>名前</span><input id="favName" type="text" placeholder="セット名"></label>
+    <div class="field">
+      <span>含めるタグ <em class="fav-hint">クリックで選択/解除</em></span>
+      <div id="favTagPick" class="fav-pick"></div>
+    </div>
+    <label class="field"><span>タグを追加(カンマ区切り → Enter)</span>
+      <input id="favAddInput" type="text" placeholder="例: smile, blush" autocomplete="off"></label>
+    <menu class="dialog-foot">
+      <button type="button" id="favCancelBtn" class="ghost-btn">キャンセル</button>
+      <button type="button" id="favSaveBtn">保存</button>
+    </menu>
+  </form>
+</dialog>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module" src="js/app.js"></script>
 </body>
