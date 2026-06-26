@@ -133,7 +133,27 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .lib-chip:hover { border-color: rgba(91,140,255,0.4); background: var(--chip-on); }
 .lib-chip:active { transform: scale(.96); }
 .lib-chip .en { color: var(--muted-2); font-size: 11px; font-family: var(--font-mono); }
-.lib-chip.custom { border-style: dashed; }
+.lib-chip.custom { border-style: dashed; cursor: pointer; padding-right: 4px; }
+.lib-chip.custom .ja { cursor: pointer; }
+.lib-del { border: none; background: transparent; color: var(--muted-2); width: 18px; height: 18px; border-radius: 5px; font-size: 11px; line-height: 1; padding: 0; }
+.lib-del:hover { background: rgba(255,138,154,0.15); color: var(--danger); }
+
+/* お気に入り(タグセット) */
+.fav-section { flex: 0 0 auto; padding: 0 12px 8px; border-bottom: 1px solid var(--line); }
+.fav-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 7px; }
+.fav-head span { font-size: 11px; color: var(--gold); font-weight: 600; letter-spacing: .03em; }
+.fav-head .ghost-btn { padding: 4px 9px; font-size: 11px; }
+.fav-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 110px; overflow-y: auto; }
+.fav-empty { font-size: 11px; color: var(--muted-2); padding: 2px; }
+.fav-chip {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: rgba(217,177,91,0.10); border: 1px solid rgba(217,177,91,0.32);
+  border-radius: 9px; padding: 3px 4px 3px 4px; font-size: 12px;
+}
+.fav-insert { border: none; background: transparent; color: var(--text); font-size: 12px; padding: 2px 4px; cursor: pointer; }
+.fav-insert em { color: var(--gold); font-style: normal; font-size: 10px; font-family: var(--font-mono); }
+.fav-del { border: none; background: transparent; color: var(--muted-2); width: 18px; height: 18px; border-radius: 5px; font-size: 11px; padding: 0; }
+.fav-del:hover { background: rgba(255,138,154,0.15); color: var(--danger); }
 
 /* ===== Editor ===== */
 .model-row, .quality-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

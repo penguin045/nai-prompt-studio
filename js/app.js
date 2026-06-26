@@ -1,6 +1,7 @@
 // app.js — NAI Prompt Studio コントローラ(V4.5対応 / マルチキャラ)
 import CATEGORIES, { QUALITY_PRESETS, MODELS, DEFAULT_MODEL, getModel, flattenTags, searchTags } from './tags.js';
 import { buildAll, buildPrompt, makeItem, parsePromptText, bumpWeight, findDuplicateIds, renderTag } from './prompt.js';
+import { normalizeKey } from './dedup.js';
 import * as db from './db.js';
 import * as store from './storage.js';
 import { readNaiFromFile } from './naimeta.js';
@@ -29,6 +30,7 @@ async function init() {
   buildModelOptions();
   buildQualityOptions();
   renderLibrary();
+  renderFavorites();
   renderEditor();
   updateOutput();
   wireGlobal();
@@ -137,18 +139,25 @@ function renderLibrary(query = '') {
   }
   if (state.customTags.length) {
     html += `<div class="category"><div class="category-title">カスタム</div>
-      <div class="tag-chips">${state.customTags.map(c => libChip({ t: c.t, j: c.j, custom: true })).join('')}</div></div>`;
+      <div class="tag-chips">${state.customTags.map(c => libChip({ t: c.t, j: c.j, custom: true, id: c.id })).join('')}</div></div>`;
   }
   host.innerHTML = html;
 }
 function libChip(t) {
-  return `<button class="lib-chip${t.custom ? ' custom' : ''}" data-tag="${esc(t.t)}" title="${esc(t.t)}">
+  if (t.custom) {
+    return `<span class="lib-chip custom" data-tag="${esc(t.t)}" title="${esc(t.t)}">
+      <span class="ja">${esc(t.j || t.t)}</span>
+      <button class="lib-del" data-cid="${esc(t.id || '')}" title="削除">✕</button></span>`;
+  }
+  return `<button class="lib-chip" data-tag="${esc(t.t)}" title="${esc(t.t)}">
     <span class="ja">${esc(t.j || t.t)}</span>${t.j ? `<span class="en">${esc(t.t)}</span>` : ''}</button>`;
 }
 function wireGlobal() {
   $('#categoryList').addEventListener('click', (e) => {
-    const chip = e.target.closest('.lib-chip'); if (!chip) return;
-    addTags(activeBox.box, activeBox.field, chip.dataset.tag);
+    const del = e.target.closest('.lib-del');
+    if (del) { deleteCustomTag(del.dataset.cid); return; }
+    const t = e.target.closest('[data-tag]');
+    if (t) addTags(activeBox.box, activeBox.field, t.dataset.tag);
   });
   $('#tagSearch').addEventListener('input', (e) => renderLibrary(e.target.value));
   $('#btnAddCustom').addEventListener('click', addCustomFromSearch);
@@ -156,6 +165,56 @@ function wireGlobal() {
   $('#btnApplyQuality').addEventListener('click', applyQuality);
   $('#btnAddChar').addEventListener('click', addCharacter);
   $('#btnLoadImage').addEventListener('click', importFromImage);
+  $('#btnSaveFav').addEventListener('click', saveFavorite);
+  $('#favList').addEventListener('click', onFavClick);
+}
+
+// ===== お気に入り(タグセット) =====
+async function renderFavorites() {
+  const favs = await db.getAll('favorites');
+  favs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const host = $('#favList');
+  if (!favs.length) { host.innerHTML = `<div class="fav-empty">タグを入れて「＋保存」でまとめ登録</div>`; return; }
+  host.innerHTML = favs.map(f => `<span class="fav-chip" data-id="${f.id}" title="${esc(f.tags)}">
+    <button class="fav-insert" data-fav="ins">★ ${esc(f.name)} <em>${f.count || 0}</em></button>
+    <button class="fav-del" data-fav="del" title="削除">✕</button></span>`).join('');
+}
+async function saveFavorite() {
+  const arr = (getArr(activeBox.box, activeBox.field) || []).filter(i => i.enabled && i.base);
+  if (!arr.length) { toast('保存するタグがありません(追加先ボックスを選択)'); return; }
+  const tags = arr.map(i => renderTag(i, state.weightMode)).join(', ');
+  const name = prompt('お気に入り名', arr.slice(0, 3).map(i => i.base).join(', '));
+  if (!name) return;
+  await db.put('favorites', { id: db.uid('f'), name, tags, count: arr.length, createdAt: new Date().toISOString() });
+  renderFavorites(); toast(`お気に入り「${name}」を保存`);
+}
+async function onFavClick(e) {
+  const chip = e.target.closest('.fav-chip'); if (!chip) return;
+  const id = chip.dataset.id;
+  if (e.target.closest('[data-fav="del"]')) { await db.del('favorites', id); renderFavorites(); toast('お気に入りを削除'); return; }
+  const f = await db.get('favorites', id);
+  if (f) { addTags(activeBox.box, activeBox.field, f.tags); toast(`「${f.name}」を ${activeBox.field === 'positive' ? 'ポジ' : 'ネガ'} へ挿入`); }
+}
+
+// ===== カスタムタグ: 追加(画像/手動)・削除 =====
+async function addTagsToLibrary(baseTags) {
+  const keys = new Set(flattenTags(CATEGORIES, state.customTags).map(t => normalizeKey(t.t)));
+  let added = 0;
+  for (const raw of baseTags) {
+    const t = String(raw || '').trim(); const k = normalizeKey(t);
+    if (!t || !k || keys.has(k)) continue;
+    keys.add(k);
+    const rec = { id: db.uid('c'), t, j: '' };
+    state.customTags.push(rec); await db.put('customTags', rec); added++;
+  }
+  if (added) renderLibrary($('#tagSearch').value);
+  return added;
+}
+async function deleteCustomTag(id) {
+  if (!id) return;
+  state.customTags = state.customTags.filter(c => c.id !== id);
+  await db.del('customTags', id);
+  renderLibrary($('#tagSearch').value); toast('カスタムタグを削除');
 }
 
 // NAI生成PNGからプロンプト/キャラを読み込んで編集欄へ展開
@@ -177,7 +236,10 @@ function importFromImage() {
       activeBox = { box: 'base', field: 'positive' };
       buildModelOptions(); renderEditor(); updateOutput(); markDirty();
       switchPanel('editor');
-      toast(`読込完了: ベース+キャラ${state.characters.length}人${norm.isV4 ? ' (V4形式)' : ''} [${norm.via}]`);
+      // 読み込んだタグをライブラリ(カスタム)へ追加
+      const imgTags = [...state.base.positive, ...state.characters.flatMap(c => c.positive)].map(i => i.base);
+      const added = await addTagsToLibrary(imgTags);
+      toast(`読込完了: ベース+キャラ${state.characters.length}人${norm.isV4 ? ' (V4形式)' : ''}${added ? ` / ライブラリに${added}件追加` : ''}`);
     } catch (e) { console.error(e); toast(e.message || '画像の読み込みに失敗しました'); }
   };
   input.click();
@@ -585,7 +647,7 @@ async function refreshLinkedFileUI() {
   $('#fsButtons').style.opacity = store.supportsFS ? '1' : '.4';
 }
 async function reloadFromDB() {
-  await loadWorkspace(); buildModelOptions(); renderLibrary(); renderEditor(); updateOutput(); renderPresets(); renderHistory();
+  await loadWorkspace(); buildModelOptions(); renderLibrary(); renderFavorites(); renderEditor(); updateOutput(); renderPresets(); renderHistory();
 }
 
 // ============ ナビ ============

@@ -3,11 +3,12 @@
 //         customTags(ユーザー追加タグ), settings(アプリ設定), meta(雑多)
 
 const DB_NAME = 'nai-prompt-studio';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORES = {
   presets:    { keyPath: 'id' },
   history:    { keyPath: 'id' },
   customTags: { keyPath: 'id' },
+  favorites:  { keyPath: 'id' },   // 複数タグのお気に入り(タグセット)
   settings:   { keyPath: 'key' },
   meta:       { keyPath: 'key' },
 };

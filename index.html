@@ -40,7 +40,14 @@
       </div>
       <div class="lib-search">
         <input id="tagSearch" type="search" placeholder="タグ検索(日本語/英語)" autocomplete="off">
-        <button id="btnAddCustom" class="ghost-btn" title="入力したタグを追加">＋追加</button>
+        <button id="btnAddCustom" class="ghost-btn" title="入力したタグをカスタム追加">＋追加</button>
+      </div>
+      <div class="fav-section">
+        <div class="fav-head">
+          <span>★ お気に入り(タグセット)</span>
+          <button id="btnSaveFav" class="ghost-btn" title="現在のボックスのタグをまとめて保存">＋保存</button>
+        </div>
+        <div id="favList" class="fav-list"></div>
       </div>
       <div id="categoryList" class="category-list"></div>
     </section>
