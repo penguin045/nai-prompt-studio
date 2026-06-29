@@ -10,7 +10,7 @@
 import { dumpAll, loadAll, get as dbGet, put as dbPut } from './db.js';
 
 const SCHEMA = 'nai-prompt-studio';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const HANDLE_KEY = 'fileHandle';
 const AUTOSAVE_KEY = 'autoSave';
 
@@ -29,8 +29,12 @@ export async function buildSnapshot() {
 }
 
 function validateSnapshot(obj) {
-  if (!obj || obj.schema !== SCHEMA || typeof obj.data !== 'object') {
-    throw new Error('対応していないバックアップ形式です');
+  if (!obj || typeof obj !== 'object') throw new Error('JSONの解析に失敗しました');
+  if (obj.schema !== SCHEMA) throw new Error('対応していないバックアップ形式です(schema 不一致)');
+  if (typeof obj.data !== 'object' || obj.data === null) throw new Error('バックアップに data がありません');
+  // 各ストアの値は配列であること(壊れたファイルでの誤インポートを防ぐ)
+  for (const [k, v] of Object.entries(obj.data)) {
+    if (v != null && !Array.isArray(v)) throw new Error(`バックアップの "${k}" が配列ではありません`);
   }
   return obj;
 }

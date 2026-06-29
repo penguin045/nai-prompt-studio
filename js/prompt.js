@@ -47,10 +47,6 @@ export function parsePromptText(text) {
   }).filter(Boolean);
 }
 
-export function makeItem(base, weight = 1) {
-  return { id: uid('t'), base: String(base).trim(), weight: round2(weight), enabled: true };
-}
-
 // 重み増減(モードで刻みが変わる)。bracketは×1.05、numericは±0.1。
 export function bumpWeight(item, delta, mode = 'numeric') {
   const w = item.weight ?? 1;
@@ -86,12 +82,18 @@ export function findDuplicateIds(items) {
   return dup;
 }
 
-// 粗いトークン概算(T5/CLIP近似: 単語・記号ベース)
+// トークン概算(CLIP近似)。重み記法/括弧を除いた語を ~4文字/トークンで数え、
+// タグ区切り(カンマ)もそれぞれ約1トークンとして加算する。
 export function estimateTokens(text) {
   if (!text) return 0;
-  const parts = text.split(/[\s,]+/).filter(Boolean);
+  // 数値::記法・波/角/丸括弧を除去
+  const clean = String(text).replace(/-?\d+(?:\.\d+)?::|::/g, ' ').replace(/[{}\[\]()]/g, ' ');
   let t = 0;
-  for (const p of parts) t += Math.max(1, Math.ceil(p.replace(/::|[{}\[\]]/g, '').length / 4));
+  for (const seg of clean.split(',')) {
+    const words = seg.trim().split(/\s+/).filter(Boolean);
+    for (const w of words) t += Math.max(1, Math.ceil(w.length / 4));
+    if (words.length) t += 1;   // カンマ区切り相当
+  }
   return t;
 }
 
@@ -127,6 +129,10 @@ export function buildAll(state) {
   const pipeParts = [base.positive.text, ...characters.map(c => c.positive.text)].filter(Boolean);
   const pipePositive = pipeParts.join(' | ');
 
+  // パイプ形式(ネガティブ): base UC | char1 UC | …(キャラ別UCを持つV4向け)
+  const pipeNegParts = [base.negative.text, ...characters.map(c => c.negative.text)].filter(Boolean);
+  const pipeNegative = pipeNegParts.join(' | ');
+
   // 集計
   const duplicates = base.positive.duplicates + base.negative.duplicates +
     characters.reduce((s, c) => s + c.positive.duplicates + c.negative.duplicates, 0);
@@ -138,7 +144,7 @@ export function buildAll(state) {
   const nonAscii = findNonAscii(allText);
 
   return {
-    base, characters, pipePositive,
+    base, characters, pipePositive, pipeNegative,
     duplicates, tokenEstimate,
     tokenLimit: 512,
     overLimit: tokenEstimate > 512,

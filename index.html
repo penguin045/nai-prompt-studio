@@ -26,6 +26,8 @@
     </div>
     <div class="appbar-actions">
       <span id="saveStatus" class="save-status" title="保存状態">—</span>
+      <button id="btnUndo" class="icon-btn" title="元に戻す (Ctrl+Z)" disabled>↶</button>
+      <button id="btnRedo" class="icon-btn" title="やり直す (Ctrl+Shift+Z)" disabled>↷</button>
       <button id="btnLoadImage" class="icon-btn" title="NAI生成画像(PNG/WebP/JPEG)からプロンプトを読込">🖼</button>
       <button id="btnData" class="icon-btn" title="データ/ファイル">💾</button>
       <button id="btnSettings" class="icon-btn" title="設定">⚙️</button>
@@ -36,17 +38,26 @@
     <!-- 左: タグライブラリ -->
     <section class="panel panel-library" data-panel="library" aria-label="タグライブラリ">
       <div class="panel-head"><h2>タグライブラリ</h2>
-        <div class="active-box-hint">追加先: <strong id="activeBoxLabel">ベース / ポジティブ</strong></div>
+        <div class="active-box-hint">追加先: <select id="activeBoxSelect" class="active-box-select" title="タグの追加先を選択"></select></div>
       </div>
       <div class="lib-search">
         <input id="tagSearch" type="search" placeholder="タグ検索(日本語/英語)" autocomplete="off">
         <button id="btnAddCustom" class="ghost-btn" title="入力したタグをカスタム追加">＋追加</button>
       </div>
+      <div class="lib-tools">
+        <select id="catJump" title="カテゴリへジャンプ"><option value="">カテゴリへ移動…</option></select>
+        <button id="btnExpandAll" class="ghost-btn xs" title="全カテゴリを開く">⊕ 全開</button>
+        <button id="btnCollapseAll" class="ghost-btn xs" title="全カテゴリを閉じる">⊖ 全閉</button>
+      </div>
       <div class="fav-section">
         <div class="fav-head">
-          <span>★ お気に入り(タグセット)</span>
-          <button id="btnSaveFav" class="ghost-btn" title="現在のボックスのタグをまとめて保存">＋保存</button>
+          <span>★ お気に入り</span>
+          <span class="fav-head-actions">
+            <button id="btnAddFavGroup" class="ghost-btn" title="グループ(フォルダ)を追加">＋グループ</button>
+            <button id="btnSaveFav" class="ghost-btn" title="現在のボックスのタグをまとめて保存">＋保存</button>
+          </span>
         </div>
+        <input id="favSearch" type="search" class="fav-search" placeholder="お気に入りを検索(名前/タグ)" autocomplete="off">
         <div id="favList" class="fav-list"></div>
       </div>
       <div id="categoryList" class="category-list"></div>
@@ -64,12 +75,33 @@
           <label for="qualityPreset">品質プリセット</label>
           <select id="qualityPreset"><option value="">— なし —</option></select>
           <button id="btnApplyQuality" class="ghost-btn">適用</button>
+          <button id="btnBulkMode" class="ghost-btn" title="複数タグをまとめて操作">☑ 一括選択</button>
+        </div>
+        <div id="bulkBar" class="bulk-bar" hidden>
+          <span id="bulkCount">0件</span>
+          <button data-bulk="all" class="mini-btn">全選択</button>
+          <button data-bulk="clear" class="mini-btn">解除</button>
+          <button data-bulk="enable" class="mini-btn">有効化</button>
+          <button data-bulk="disable" class="mini-btn">無効化</button>
+          <select id="bulkMoveTarget" title="移動先"></select>
+          <button data-bulk="move" class="mini-btn">移動</button>
+          <button data-bulk="delete" class="mini-btn danger">削除</button>
         </div>
       </div>
       <div class="editor-scroll">
+        <div id="paramsHost"></div>
         <div id="editorBoxes"></div>
         <button id="btnAddChar" class="add-char-btn">＋ キャラクター追加</button>
         <p class="hint" id="multicharHint">人数タグ(1girl, 2girls…)はベースへ。各キャラは番号なし(girl/boy)で記述します。</p>
+      </div>
+      <!-- モバイル: 編集画面を離れずに出力を確認・コピー(G11) -->
+      <div id="miniOut" class="mini-out">
+        <textarea id="miniOutPipe" class="mini-out-text" readonly rows="2" placeholder="出力プレビュー(パイプ形式 ポジ)"></textarea>
+        <textarea id="miniOutPipeNeg" class="mini-out-text" hidden readonly></textarea>
+        <div class="mini-out-actions">
+          <button class="copy-btn" data-copy-el="miniOutPipe">ポジをコピー</button>
+          <button class="copy-btn ghost-btn" data-copy-el="miniOutPipeNeg" id="miniCopyNeg">ネガ</button>
+        </div>
       </div>
     </section>
 
@@ -80,9 +112,15 @@
         <div id="warnArea"></div>
 
         <div class="out-group">
-          <div class="out-label"><span>パイプ形式(1欄貼り付け用)</span>
+          <div class="out-label"><span>パイプ形式 ポジ(1欄貼り付け用)</span>
             <button class="copy-btn" data-copy-el="outPipe">コピー</button></div>
           <textarea id="outPipe" class="out-text" readonly rows="3"></textarea>
+        </div>
+
+        <div class="out-group" id="pipeNegGroup">
+          <div class="out-label"><span>パイプ形式 ネガ(1欄貼り付け用)</span>
+            <button class="copy-btn" data-copy-el="outPipeNeg">コピー</button></div>
+          <textarea id="outPipeNeg" class="out-text" readonly rows="2"></textarea>
         </div>
 
         <div id="boxOutputs"></div>
@@ -123,7 +161,14 @@
     </div>
     <label class="switch-row"><input type="checkbox" id="autoSaveToggle"><span>変更時に自動でファイル保存する</span></label>
     <hr>
-    <p class="dialog-desc">ファイルAPI非対応ブラウザ向け:</p>
+    <p class="dialog-desc">現在のプロンプトを NAI 形式メタとして書き出し(往復):</p>
+    <div class="dialog-grid">
+      <button type="button" id="btnExportPng">メタ付きPNG(tEXt)</button>
+      <button type="button" id="btnExportStealth">メタ付きPNG(stealth)</button>
+      <button type="button" id="btnExportNaiJson">NAI形式JSON</button>
+    </div>
+    <hr>
+    <p class="dialog-desc">アプリ全データのバックアップ(ファイルAPI非対応ブラウザ向け):</p>
     <div class="dialog-grid">
       <button type="button" id="btnExport">JSONをダウンロード</button>
       <button type="button" id="btnImport">JSONを読み込み(置換)</button>
@@ -144,6 +189,7 @@
       </select>
     </label>
     <label class="switch-row"><input type="checkbox" id="setDedup" checked><span>最終出力で重複排除する(ボックス単位)</span></label>
+    <label class="switch-row"><input type="checkbox" id="setCrossDup" checked><span>ボックス横断の重複を検出・強調する(マルチキャラの意図的重複は OFF に)</span></label>
     <label class="field"><span>重複時に残す重み</span>
       <select id="setKeep">
         <option value="strongest">最も強調された方</option>
@@ -160,6 +206,7 @@
   <form method="dialog">
     <h2 id="favDialogTitle">お気に入り(タグセット)</h2>
     <label class="field"><span>名前</span><input id="favName" type="text" placeholder="セット名"></label>
+    <label class="field"><span>グループ</span><select id="favGroupSelect"></select></label>
     <div class="field">
       <span>含めるタグ <em class="fav-hint">クリックで選択/解除</em></span>
       <div id="favTagPick" class="fav-pick"></div>
