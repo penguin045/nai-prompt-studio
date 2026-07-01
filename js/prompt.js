@@ -26,6 +26,8 @@ const near1 = (w) => Math.abs(w - 1) < 1e-6;
 // 1タグを記法に従ってレンダリング
 export function renderTag(item, mode = 'numeric') {
   const base = item.base;
+  // ランダマイザ ||a|b|c|| は重み記法を適用せずそのまま出力する
+  if (base.includes('||')) return base;
   const w = item.weight ?? 1;
   if (near1(w)) return base;
 

@@ -220,22 +220,26 @@ function mapModel(source) {
   if (s.includes('v3') || s.includes('diffusion 3') || s.includes('anime')) return 'v3';
   return null;
 }
-// キャプション整形: 改行・トップレベルの | を区切り(,)へ、連続/空の区切りを除去。
-// :: 重みブロックと () [] {} の内側は触らない。
+// キャプション整形: 改行→区切り、連続/前後の余分なカンマを除去。
+// プロンプトミキシングの単独 | とランダマイザ ||...|| は保持する。
+//   - ランダマイザ内(||...||)は一切触らない(空要素のカンマも意味を持つため)
+//   - 通常部分の連続カンマのみ整理
 export function cleanCaption(s) {
   if (!s) return '';
   s = String(s).replace(/\r?\n/g, ', ');
-  let out = '', depth = 0, num = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === ':' && s[i + 1] === ':') { num = !num; out += '::'; i++; continue; }
-    if (!num) {
-      if (c === '(' || c === '[' || c === '{') depth++;
-      else if (c === ')' || c === ']' || c === '}') depth = Math.max(0, depth - 1);
+  // || で区切ると、奇数インデックスがランダマイザ内容(バランスしている場合)
+  const segs = s.split('||');
+  const balanced = segs.length % 2 === 1;
+  let parts = [];
+  for (let k = 0; k < segs.length; k++) {
+    const isRandom = (k % 2 === 1) && (balanced || k < segs.length - 1);
+    if (isRandom) {
+      parts.push('||' + segs[k] + '||');   // ランダマイザはそのまま
+    } else {
+      parts.push(segs[k].replace(/\s*,(?:\s*,)+/g, ', '));  // 通常部の連続カンマのみ整理
     }
-    out += (c === '|' && depth === 0 && !num) ? ',' : c;
   }
-  return out.replace(/\s*,(?:\s*,)+/g, ', ').replace(/^\s*,+|,+\s*$/g, '').trim();
+  return parts.join('').replace(/^\s*,+\s*|\s*,+\s*$/g, '').trim();
 }
 
 export function normalizeParams(params, source) {

@@ -806,10 +806,14 @@ function tagChip(it, isDup) {
   const wtxt = Math.round(w * 100) / 100;
   const sel = bulkSel.has(it.id);
   const check = bulkMode ? `<button class="bulk-check" data-act="bulkcheck" title="選択">${sel ? '☑' : '☐'}</button>` : '';
-  return `<span class="tag${it.enabled ? '' : ' disabled'}${isDup ? ' dup' : ''}${sel ? ' selected' : ''}" data-id="${it.id}" tabindex="0" title="Alt+←/→で並べ替え / Enterで編集 / Deleteで削除">
+  // NAI ランダマイザ(||a|b||)/ プロンプトミキシング(単独 |)は特別扱い
+  const special = it.base.includes('||') ? ' special random' : it.base.includes('|') ? ' special mix' : '';
+  const mark = it.base.includes('||') ? '<span class="tag-mark" title="ランダマイザ">🎲</span>'
+    : it.base.includes('|') ? '<span class="tag-mark" title="プロンプトミキシング">⇄</span>' : '';
+  return `<span class="tag${it.enabled ? '' : ' disabled'}${isDup ? ' dup' : ''}${sel ? ' selected' : ''}${special}" data-id="${it.id}" tabindex="0" title="Alt+←/→で並べ替え / Enterで編集 / Deleteで削除">
     ${check}
     <span class="drag-grip" title="ドラッグで並べ替え">⠿</span>
-    <span class="label" title="クリックで編集">${esc(it.base)}</span>
+    ${mark}<span class="label" title="クリックで編集">${esc(it.base)}</span>
     <span class="wctl">
       <button class="tag-btn minus" data-act="minus" title="弱める">−</button>
       <button class="wval ${wcls}" data-act="wedit" title="重みを直接入力">${wtxt}</button>

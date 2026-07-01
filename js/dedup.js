@@ -21,6 +21,13 @@ export function parseTag(rawInput) {
   const raw = String(rawInput).trim();
   if (!raw) return null;
 
+  // NAI プロンプトランダマイザ ||a|b|c|| はアトミックに保持する。
+  // 括弧・数値::記法の解釈を一切せず、そのまま1タグとして扱う(重み1.0)。
+  if (raw.includes('||')) {
+    const key = normalizeKey(raw);
+    return key ? { raw, base: raw, key, weight: 1.0 } : null;
+  }
+
   let s = raw;
   let weight = 1.0;
 
@@ -87,6 +94,7 @@ export function splitTags(prompt) {
   const out = [];
   let depth = 0;       // () [] {} のネスト深さ
   let inNumWeight = false;
+  let inRandom = false; // || ... || ランダマイザ内(内部のカンマは区切りにしない)
   let buf = '';
   const str = String(prompt);
 
@@ -94,13 +102,18 @@ export function splitTags(prompt) {
     const c = str[i];
     const prev = str[i - 1];
 
+    // ランダマイザ境界 || をアトミックに扱う(単独の | ミキシングは通常文字)
+    if (c === '|' && str[i + 1] === '|' && prev !== '\\') {
+      inRandom = !inRandom; buf += '||'; i++; continue;
+    }
+
     if (prev !== '\\') {
       if (c === '(' || c === '[' || c === '{') depth++;
       else if (c === ')' || c === ']' || c === '}') depth = Math.max(0, depth - 1);
       else if (c === ':' && str[i + 1] === ':') inNumWeight = !inNumWeight;
     }
 
-    if (c === ',' && depth === 0 && !inNumWeight) {
+    if (c === ',' && depth === 0 && !inNumWeight && !inRandom) {
       if (buf.trim()) out.push(buf.trim());
       buf = '';
     } else {

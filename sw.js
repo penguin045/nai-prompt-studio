@@ -1,5 +1,5 @@
 // sw.js — Service Worker(オフライン対応・アプリシェルのキャッシュ)
-const CACHE = 'nai-studio-v9';
+const CACHE = 'nai-studio-v10';
 const ASSETS = [
   './',
   './index.html',
